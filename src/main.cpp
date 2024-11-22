@@ -2,8 +2,6 @@
 #include "helper.h"
 #include "periph.h"
 
-#include "serialATmega.h"
-
 #define NUM_TASKS 2 // TODO: Change to the number of tasks being used
 
 // Task struct for concurrent synchSMs implmentations
@@ -19,8 +17,8 @@ typedef struct _task
 //  e.g. const unsined long TASK1_PERIOD = <PERIOD>
 const unsigned long GCD_PERIOD = 1; // TODO:Set the GCD Period
 
-const unsigned long DISP_PERIOD = 5;
-const unsigned long JOY_PERIOD = 1000;
+const unsigned long DISP_PERIOD = 1;
+const unsigned long JOY_PERIOD = 200;
 
 task tasks[NUM_TASKS]; // declared task array with 5 tasks
 
@@ -41,6 +39,7 @@ void TimerISR()
 
 void outNum(unsigned char digit)
 {
+
     static const unsigned char seg_data[] = {
         0b00111111, // 0
         0b00000110, // 1
@@ -55,27 +54,23 @@ void outNum(unsigned char digit)
         0b00000000  // blank
     };
 
-    // Get the segment pattern for the digit
+    // send new data
     unsigned char data = seg_data[digit];
 
-    // Shift out the data
     for (int i = 0; i < 8; i++)
     {
-        // Set data bit
-        PORTD = (PORTD & ~(1 << 5)) | ((data & (1 << (7 - i))) ? (1 << 5) : 0);
 
-        // Clock pulse
-        PORTD |= (1 << 6); // SRCLK high
-        _delay_us(1);
-        PORTD &= ~(1 << 6); // SRCLK low
-        _delay_us(1);
+        PORTD = SetBit(PORTD, 5, (data & (1 << (7 - i))) ? 1 : 0);
+
+        // Clock (shift)
+        PORTD = SetBit(PORTD, 6, 1);
+
+        PORTD = SetBit(PORTD, 6, 0);
     }
 
-    // Latch pulse
-    PORTD |= (1 << 7); // RCLK high
-    _delay_us(1);
-    PORTD &= ~(1 << 7); // RCLK low
-    _delay_us(1);
+    // Latch (output)
+    PORTD = SetBit(PORTD, 7, 1);
+    PORTD = SetBit(PORTD, 7, 0);
 }
 
 // TODO: Create your tick functions for each task
@@ -102,7 +97,6 @@ int DisplayTick(int state)
         currNum /= 10;
     }
 
-    // State transitions
     switch (state)
     {
     case D_INIT:
@@ -125,55 +119,51 @@ int DisplayTick(int state)
         break;
     }
 
-    // State actions
+    PORTB = SetBit(PORTB, 0, 1);
+    PORTD = SetBit(PORTD, 2, 1);
+    PORTD = SetBit(PORTD, 3, 1);
+    PORTD = SetBit(PORTD, 4, 1);
+
     switch (state)
     {
     case D1:
-        PORTB &= ~(1 << 0);
-        PORTD |= (1 << 2) | (1 << 3) | (1 << 4);
         outNum(digits[0]);
+        PORTB = SetBit(PORTB, 0, 0);
         break;
 
     case D2:
-        PORTB |= (1 << 0);
-        PORTD &= ~(1 << 2);
-        PORTD |= (1 << 3) | (1 << 4);
-
-        if (number < 10)
+        if (number >= 10)
         {
-            outNum(10);
+            outNum(digits[1]);
+            PORTD = SetBit(PORTD, 2, 0);
         }
         else
         {
-            outNum(digits[1]);
+            outNum(10);
         }
         break;
 
     case D3:
-        PORTB |= (1 << 0);
-        PORTD &= ~(1 << 3);
-        PORTD |= (1 << 2) | (1 << 4);
-        if (number < 100)
+        if (number >= 100)
         {
-            outNum(10);
+            outNum(digits[2]);
+            PORTD = SetBit(PORTD, 3, 0);
         }
         else
         {
-            outNum(digits[2]);
+            outNum(10);
         }
         break;
 
     case D4:
-        PORTB |= (1 << 0);
-        PORTD &= ~(1 << 4);
-        PORTD |= (1 << 2) | (1 << 3);
-        if (number < 1000)
+        if (number >= 1000)
         {
-            outNum(10);
+            outNum(digits[3]);
+            PORTD = SetBit(PORTD, 4, 0);
         }
         else
         {
-            outNum(digits[3]);
+            outNum(10);
         }
         break;
 
@@ -184,8 +174,8 @@ int DisplayTick(int state)
     return state;
 }
 
-#define JOY_LOW 200
-#define JOY_HIGH 800
+unsigned int JOY_LOW = 200;
+unsigned int JOY_HIGH = 800;
 
 enum JoyStates
 {
@@ -200,9 +190,8 @@ unsigned char joystickReleased = 1;
 int JoystickTick(int state)
 {
 
-    unsigned int xPos = ADC_read(1);
-    unsigned int yPos = ADC_read(0);
-    serial_println(xPos);
+    unsigned int x_pos = ADC_read(1);
+    unsigned int y_pos = ADC_read(0);
 
     // State transitions
     switch (state)
@@ -214,12 +203,12 @@ int JoystickTick(int state)
     case JOY_WAIT:
         if (joystickReleased)
         {
-            if (xPos < JOY_LOW || xPos > JOY_HIGH)
+            if (x_pos < JOY_LOW || x_pos > JOY_HIGH)
             {
                 state = JOY_X_MOVE;
                 joystickReleased = 0;
             }
-            else if (yPos < JOY_LOW || yPos > JOY_HIGH)
+            else if (y_pos < JOY_LOW || y_pos > JOY_HIGH)
             {
                 state = JOY_Y_MOVE;
                 joystickReleased = 0;
@@ -228,7 +217,7 @@ int JoystickTick(int state)
         break;
 
     case JOY_X_MOVE:
-        if (xPos >= JOY_LOW && xPos <= JOY_HIGH)
+        if (x_pos >= JOY_LOW && x_pos <= JOY_HIGH)
         {
             joystickReleased = 1;
             state = JOY_WAIT;
@@ -236,7 +225,7 @@ int JoystickTick(int state)
         break;
 
     case JOY_Y_MOVE:
-        if (yPos >= JOY_LOW && yPos <= JOY_HIGH)
+        if (y_pos >= JOY_LOW && y_pos <= JOY_HIGH)
         {
             joystickReleased = 1;
             state = JOY_WAIT;
@@ -252,21 +241,31 @@ int JoystickTick(int state)
     switch (state)
     {
     case JOY_X_MOVE:
-        if (xPos < JOY_LOW)
-            number++;
-        else if (xPos > JOY_HIGH)
-            number++;
+        if (number < 9999)
+        {
+            if (x_pos < JOY_LOW)
+                number++;
+            else if (x_pos > JOY_HIGH)
+                number++;
+        }
         break;
-
     case JOY_Y_MOVE:
-        if (yPos < JOY_LOW)
-            number++;
-        else if (yPos > JOY_HIGH)
-            number++;
+        if (number > 0)
+        {
+            if (y_pos < JOY_LOW)
+                number--;
+            else if (y_pos > JOY_HIGH)
+                number--;
+        }
         break;
 
     default:
         break;
+    }
+
+    if (ADC_read(2) < 200)
+    {
+        number = 0;
     }
 
     return state;
@@ -284,7 +283,6 @@ int main(void)
     PORTD = 0x00;
 
     ADC_init(); // initializes ADC
-    serial_init(9600);
 
     // TODO: Initialize tasks here
     //  e.g.
