@@ -3,17 +3,27 @@
 #include "periph.h"
 #include "spiAVR.h"
 
-#define NUM_TASKS 2 // TODO: Change to the number of tasks being used
+#define NUM_TASKS 3 // TODO: Change to the number of tasks being used
 
 unsigned char digits[4];
-unsigned int number = 0;
+unsigned int score = 0;
 
 unsigned char matrixState[8] = {0};
 
-unsigned int JOY_LOW = 200;
-unsigned int JOY_HIGH = 800;
-unsigned int JOY_CENTER_LOW = 500;
-unsigned int JOY_CENTER_HIGH = 600;
+#define JOY_LOW 200
+#define JOY_HIGH 800
+#define JOY_CENTER_LOW 500
+#define JOY_CENTER_HIGH 600
+
+unsigned int defaultX = 1;
+unsigned int defaultY = 1;
+
+unsigned int userX = defaultX;
+unsigned int userY = defaultY;
+
+int visited[8][8] = {0};
+unsigned int prevUserX = 0;
+unsigned int prevUserY = 0;
 
 // Task struct for concurrent synchSMs implmentations
 typedef struct _task
@@ -30,6 +40,7 @@ const unsigned long GCD_PERIOD = 1; // TODO:Set the GCD Period
 
 const unsigned long DISP_PERIOD = 1;
 const unsigned long JOY_PERIOD = 200;
+const unsigned long SCORE_PERIOD = 200;
 
 task tasks[NUM_TASKS]; // declared task array with 5 tasks
 
@@ -104,6 +115,28 @@ void setMatrixLED(unsigned char row, unsigned char col, bool state)
     PORTB = SetBit(PORTB, PIN_SS, 1);
 }
 
+void clearMatrix()
+{
+    for (unsigned char i = 1; i <= 8; i++)
+    {
+        PORTB = SetBit(PORTB, PIN_SS, 0);
+        SPI_SEND(i);
+        SPI_SEND(0x00);
+        PORTB = SetBit(PORTB, PIN_SS, 1);
+    }
+}
+
+void clearVisited()
+{
+    for (int i = 0; i < 8; i++)
+    {
+        for (int j = 0; j < 8; j++)
+        {
+            visited[i][j] = 0;
+        }
+    }
+}
+
 // TODO: Create your tick functions for each task
 
 enum DispStates
@@ -117,7 +150,7 @@ enum DispStates
 
 int DisplayTick(int state)
 {
-    int currNum = number;
+    int currNum = score;
 
     for (int i = 0; i < 4; i++)
     {
@@ -160,7 +193,7 @@ int DisplayTick(int state)
         break;
 
     case D2:
-        if (number >= 10)
+        if (score >= 10)
         {
             outNum(digits[1]);
             PORTD = SetBit(PORTD, 2, 0);
@@ -172,7 +205,7 @@ int DisplayTick(int state)
         break;
 
     case D3:
-        if (number >= 100)
+        if (score >= 100)
         {
             outNum(digits[2]);
             PORTD = SetBit(PORTD, 3, 0);
@@ -184,7 +217,7 @@ int DisplayTick(int state)
         break;
 
     case D4:
-        if (number >= 1000)
+        if (score >= 1000)
         {
             outNum(digits[3]);
             PORTD = SetBit(PORTD, 4, 0);
@@ -252,22 +285,22 @@ int JoystickTick(int state)
     switch (state)
     {
     case JOY_XY_MOVE:
-        if (number > 1 && y_pos < JOY_LOW)
+        if (y_pos < JOY_LOW && userY > 1)
         {
-            number -= 2;
+            userY--;
         }
-        else if (number < 9999 && y_pos > JOY_HIGH)
+        else if (y_pos > JOY_HIGH && userY < 8)
         {
-            number += 2;
+            userY++;
         }
 
-        if (number > 0 && x_pos < JOY_LOW)
+        if (x_pos < JOY_LOW && userX > 1)
         {
-            number--;
+            userX--;
         }
-        if (number < 9999 && x_pos > JOY_HIGH)
+        else if (x_pos > JOY_HIGH && userX < 8)
         {
-            number++;
+            userX++;
         }
         break;
 
@@ -277,7 +310,40 @@ int JoystickTick(int state)
 
     if (btn_pressed)
     {
-        number = 0;
+        userX = defaultX;
+        userY = defaultY;
+        clearVisited();
+    }
+
+    return state;
+}
+
+int ScoreTick(int state)
+{
+
+    if (userX != prevUserX || userY != prevUserY)
+    {
+
+        if (visited[userX][userY] == 0)
+        {
+
+            visited[userX][userY] = 1;
+
+            if (score < 9999)
+            {
+                score += 1;
+            }
+        }
+        else
+        {
+            if (score > 0)
+            {
+                score -= 1;
+            }
+        }
+
+        prevUserX = userX;
+        prevUserY = userY;
     }
 
     return state;
@@ -316,6 +382,11 @@ int main(void)
     tasks[1].period = JOY_PERIOD;
     tasks[1].elapsedTime = 0;
     tasks[1].TickFct = &JoystickTick;
+
+    tasks[2].state = 0;
+    tasks[2].period = SCORE_PERIOD;
+    tasks[2].elapsedTime = 0;
+    tasks[2].TickFct = &ScoreTick;
 
     TimerSet(GCD_PERIOD);
     TimerOn();
