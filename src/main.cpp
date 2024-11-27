@@ -29,7 +29,7 @@ unsigned int prevUserY = 0;
 int userBlink = 1;
 
 // rgb led stuff
-unsigned int pwm_period = 12;
+unsigned int pwm_period = 10;
 unsigned int red_duty_cycle = 0;
 unsigned int red_counter = 0;
 unsigned int green_duty_cycle = 0;
@@ -58,7 +58,7 @@ const unsigned long JOY_PERIOD = 150;
 const unsigned long VISITED_PERIOD = 100;
 const unsigned long MATRIX_DISP_PERIOD = 650;
 const unsigned long RGB_LED_FLICKER_PERIOD = 650;
-const unsigned long RGB_LED_PERIOD = 5;
+const unsigned long RGB_LED_PERIOD = 1;
 
 task tasks[NUM_TASKS]; // declared task array with 5 tasks
 
