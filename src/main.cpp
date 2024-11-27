@@ -272,6 +272,28 @@ int JoystickTick(int state)
     return state;
 }
 
+unsigned char matrixState[8] = {0};
+
+void setMatrixLED(unsigned char row, unsigned char col, bool state)
+{
+    if (row < 1 || row > 8 || col < 1 || col > 8)
+        return;
+
+    unsigned char x = row;
+    unsigned char y = 8 - col;
+
+    if (state)
+        matrixState[x] |= (1 << y);
+    else
+        matrixState[x] &= ~(1 << y);
+
+    PORTB = SetBit(PORTB, PIN_SS, 0);
+    SPI_SEND(x);
+    _delay_us(2);
+    SPI_SEND(matrixState[x]);
+    PORTB = SetBit(PORTB, PIN_SS, 1);
+}
+
 int main(void)
 {
     // TODO: initialize all your inputs and ouputs
@@ -285,7 +307,9 @@ int main(void)
 
     ADC_init(); // initializes ADC
 
+    // initialize 8x8 led matrix
     SPI_INIT();
+    MAX7219_INIT();
 
     // TODO: Initialize tasks here
     //  e.g.
@@ -306,6 +330,9 @@ int main(void)
 
     TimerSet(GCD_PERIOD);
     TimerOn();
+
+    setMatrixLED(1, 1, true);
+    setMatrixLED(1, 2, true);
 
     while (1)
     {
