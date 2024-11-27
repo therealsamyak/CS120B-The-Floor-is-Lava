@@ -3,7 +3,7 @@
 #include "periph.h"
 #include "spiAVR.h"
 
-#define NUM_TASKS 4 // TODO: Change to the number of tasks being used
+#define NUM_TASKS 5 // TODO: Change to the number of tasks being used
 
 unsigned char digits[4];
 unsigned int score = 0;
@@ -16,7 +16,7 @@ unsigned char matrixState[8] = {0};
 #define JOY_CENTER_HIGH 600
 
 unsigned int startX = 8;
-unsigned int startY = 1;
+unsigned int startY = 8;
 
 unsigned int userX = startX;
 unsigned int userY = startY;
@@ -26,6 +26,15 @@ unsigned int prevUserX = 0;
 unsigned int prevUserY = 0;
 
 int userBlink = 1;
+
+// rgb led stuff
+unsigned int pwm_period = 12;
+unsigned int red_duty_cycle = 0;
+unsigned int red_counter = 0;
+unsigned int green_duty_cycle = 0;
+unsigned int green_counter = 0;
+unsigned int blue_duty_cycle = 0;
+unsigned int blue_counter = 0;
 
 // Task struct for concurrent synchSMs implmentations
 typedef struct _task
@@ -44,6 +53,7 @@ const unsigned long DISP_PERIOD = 5;
 const unsigned long JOY_PERIOD = 200;
 const unsigned long VISITED_PERIOD = 100;
 const unsigned long MATRIX_DISP_PERIOD = 503;
+const unsigned long RGB_LED_PERIOD = 1;
 
 task tasks[NUM_TASKS]; // declared task array with 5 tasks
 
@@ -138,6 +148,23 @@ void clearVisited()
             visited[i][j] = 0;
         }
     }
+}
+
+void setRGBCycles(unsigned int red_percent, unsigned int green_percent, unsigned int blue_percent)
+{
+    if (red_percent > 100 ||
+        green_percent > 100 ||
+        blue_percent > 100 ||
+        red_percent < 0 ||
+        blue_percent < 0 ||
+        green_percent < 0)
+    {
+        return;
+    }
+
+    red_duty_cycle = (red_percent * pwm_period) / 100;
+    green_duty_cycle = (green_percent * pwm_period) / 100;
+    blue_duty_cycle = (blue_percent * pwm_period) / 100;
 }
 
 // TODO: Create your tick functions for each task
@@ -395,6 +422,53 @@ int MatrixDispTick(int state)
     return state;
 }
 
+enum RGBStates
+{
+    RGB_OFF,
+    RGB_ON,
+} rgbState;
+
+int RgbLedTick(int state)
+{
+
+    // red pin
+    if (red_counter < red_duty_cycle)
+    {
+        PORTC = SetBit(PORTC, 3, 1);
+    }
+    else
+    {
+        PORTC = SetBit(PORTC, 3, 0);
+    }
+
+    // green pin
+    if (green_counter < green_duty_cycle)
+    {
+        PORTC = SetBit(PORTC, 4, 1);
+    }
+    else
+    {
+        PORTC = SetBit(PORTC, 4, 0);
+    }
+
+    // blue pin
+    if (blue_counter < blue_duty_cycle)
+    {
+        PORTC = SetBit(PORTC, 5, 1);
+    }
+    else
+    {
+        PORTC = SetBit(PORTC, 5, 0);
+    }
+
+    // update counter
+    red_counter = (red_counter + 1) % pwm_period;
+    green_counter = (green_counter + 1) % pwm_period;
+    blue_counter = (blue_counter + 1) % pwm_period;
+
+    return state;
+}
+
 int main(void)
 {
     // TODO: initialize all your inputs and ouputs
@@ -439,8 +513,15 @@ int main(void)
     tasks[3].elapsedTime = 0;
     tasks[3].TickFct = &MatrixDispTick;
 
+    tasks[4].state = 0;
+    tasks[4].period = RGB_LED_PERIOD;
+    tasks[4].elapsedTime = 0;
+    tasks[4].TickFct = &RgbLedTick;
+
     TimerSet(GCD_PERIOD);
     TimerOn();
+
+    setRGBCycles(60, 5, 40);
 
     while (1)
     {
