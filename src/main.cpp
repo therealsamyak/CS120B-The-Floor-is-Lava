@@ -1,6 +1,7 @@
 #include "timerISR.h"
 #include "helper.h"
 #include "periph.h"
+#include "spiAVR.h"
 
 #define NUM_TASKS 2 // TODO: Change to the number of tasks being used
 
@@ -283,6 +284,8 @@ int main(void)
     PORTD = 0x00;
 
     ADC_init(); // initializes ADC
+
+    SPI_INIT();
 
     // TODO: Initialize tasks here
     //  e.g.
