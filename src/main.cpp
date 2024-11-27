@@ -5,6 +5,16 @@
 
 #define NUM_TASKS 2 // TODO: Change to the number of tasks being used
 
+unsigned char digits[4];
+unsigned int number = 0;
+
+unsigned char matrixState[8] = {0};
+
+unsigned int JOY_LOW = 200;
+unsigned int JOY_HIGH = 800;
+unsigned int JOY_CENTER_LOW = 500;
+unsigned int JOY_CENTER_HIGH = 600;
+
 // Task struct for concurrent synchSMs implmentations
 typedef struct _task
 {
@@ -74,6 +84,26 @@ void outNum(unsigned char digit)
     PORTD = SetBit(PORTD, 7, 0);
 }
 
+void setMatrixLED(unsigned char row, unsigned char col, bool state)
+{
+    if (row < 1 || row > 8 || col < 1 || col > 8)
+        return;
+
+    unsigned char x = row;
+    unsigned char y = 8 - col;
+
+    if (state)
+        matrixState[x] |= (1 << y);
+    else
+        matrixState[x] &= ~(1 << y);
+
+    PORTB = SetBit(PORTB, PIN_SS, 0);
+    SPI_SEND(x);
+    _delay_us(2);
+    SPI_SEND(matrixState[x]);
+    PORTB = SetBit(PORTB, PIN_SS, 1);
+}
+
 // TODO: Create your tick functions for each task
 
 enum DispStates
@@ -84,9 +114,6 @@ enum DispStates
     D3,
     D4
 } dispState;
-
-unsigned char digits[4];
-unsigned int number = 0;
 
 int DisplayTick(int state)
 {
@@ -175,24 +202,19 @@ int DisplayTick(int state)
     return state;
 }
 
-unsigned int JOY_LOW = 200;
-unsigned int JOY_HIGH = 800;
-
 enum JoyStates
 {
     JOY_INIT,
     JOY_WAIT,
-    JOY_X_MOVE,
-    JOY_Y_MOVE
+    JOY_HOLD,
+    JOY_XY_MOVE
 } joyState;
-
-unsigned char joystickReleased = 1;
 
 int JoystickTick(int state)
 {
-
     unsigned int x_pos = ADC_read(1);
     unsigned int y_pos = ADC_read(0);
+    unsigned int btn_pressed = ADC_read(2) < 200;
 
     // State transitions
     switch (state)
@@ -202,33 +224,21 @@ int JoystickTick(int state)
         break;
 
     case JOY_WAIT:
-        if (joystickReleased)
+
+        if (x_pos < JOY_LOW || x_pos > JOY_HIGH || y_pos < JOY_LOW || y_pos > JOY_HIGH)
         {
-            if (x_pos < JOY_LOW || x_pos > JOY_HIGH)
-            {
-                state = JOY_X_MOVE;
-                joystickReleased = 0;
-            }
-            else if (y_pos < JOY_LOW || y_pos > JOY_HIGH)
-            {
-                state = JOY_Y_MOVE;
-                joystickReleased = 0;
-            }
+            state = JOY_XY_MOVE;
         }
+
         break;
 
-    case JOY_X_MOVE:
-        if (x_pos >= JOY_LOW && x_pos <= JOY_HIGH)
-        {
-            joystickReleased = 1;
-            state = JOY_WAIT;
-        }
+    case JOY_XY_MOVE:
+        state = JOY_HOLD;
         break;
 
-    case JOY_Y_MOVE:
-        if (y_pos >= JOY_LOW && y_pos <= JOY_HIGH)
+    case JOY_HOLD:
+        if (x_pos > JOY_CENTER_LOW && x_pos < JOY_CENTER_HIGH && y_pos > JOY_CENTER_LOW && y_pos < JOY_CENTER_HIGH)
         {
-            joystickReleased = 1;
             state = JOY_WAIT;
         }
         break;
@@ -241,22 +251,23 @@ int JoystickTick(int state)
     // State actions
     switch (state)
     {
-    case JOY_X_MOVE:
-        if (number < 9999)
+    case JOY_XY_MOVE:
+        if (number > 1 && y_pos < JOY_LOW)
         {
-            if (x_pos < JOY_LOW)
-                number++;
-            else if (x_pos > JOY_HIGH)
-                number++;
+            number -= 2;
         }
-        break;
-    case JOY_Y_MOVE:
-        if (number > 0)
+        else if (number < 9999 && y_pos > JOY_HIGH)
         {
-            if (y_pos < JOY_LOW)
-                number--;
-            else if (y_pos > JOY_HIGH)
-                number--;
+            number += 2;
+        }
+
+        if (number > 0 && x_pos < JOY_LOW)
+        {
+            number--;
+        }
+        if (number < 9999 && x_pos > JOY_HIGH)
+        {
+            number++;
         }
         break;
 
@@ -264,34 +275,12 @@ int JoystickTick(int state)
         break;
     }
 
-    if (ADC_read(2) < 200)
+    if (btn_pressed)
     {
         number = 0;
     }
 
     return state;
-}
-
-unsigned char matrixState[8] = {0};
-
-void setMatrixLED(unsigned char row, unsigned char col, bool state)
-{
-    if (row < 1 || row > 8 || col < 1 || col > 8)
-        return;
-
-    unsigned char x = row;
-    unsigned char y = 8 - col;
-
-    if (state)
-        matrixState[x] |= (1 << y);
-    else
-        matrixState[x] &= ~(1 << y);
-
-    PORTB = SetBit(PORTB, PIN_SS, 0);
-    SPI_SEND(x);
-    _delay_us(2);
-    SPI_SEND(matrixState[x]);
-    PORTB = SetBit(PORTB, PIN_SS, 1);
 }
 
 int main(void)
