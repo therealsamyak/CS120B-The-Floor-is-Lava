@@ -3,7 +3,7 @@
 #include "periph.h"
 #include "spiAVR.h"
 
-#define NUM_TASKS 5 // TODO: Change to the number of tasks being used
+#define NUM_TASKS 6 // TODO: Change to the number of tasks being used
 
 unsigned char digits[4];
 unsigned int score = 0;
@@ -14,6 +14,7 @@ unsigned char matrixState[8] = {0};
 #define JOY_HIGH 800
 #define JOY_CENTER_LOW 500
 #define JOY_CENTER_HIGH 600
+#define LONG_PRESS_THRESHOLD 10
 
 unsigned int startX = 8;
 unsigned int startY = 8;
@@ -36,6 +37,9 @@ unsigned int green_counter = 0;
 unsigned int blue_duty_cycle = 0;
 unsigned int blue_counter = 0;
 
+unsigned int color1[3] = {0};
+unsigned int color2[3] = {0};
+
 // Task struct for concurrent synchSMs implmentations
 typedef struct _task
 {
@@ -50,10 +54,11 @@ typedef struct _task
 const unsigned long GCD_PERIOD = 1; // TODO:Set the GCD Period
 
 const unsigned long DISP_PERIOD = 5;
-const unsigned long JOY_PERIOD = 200;
+const unsigned long JOY_PERIOD = 150;
 const unsigned long VISITED_PERIOD = 100;
-const unsigned long MATRIX_DISP_PERIOD = 503;
-const unsigned long RGB_LED_PERIOD = 1;
+const unsigned long MATRIX_DISP_PERIOD = 650;
+const unsigned long RGB_LED_FLICKER_PERIOD = 650;
+const unsigned long RGB_LED_PERIOD = 5;
 
 task tasks[NUM_TASKS]; // declared task array with 5 tasks
 
@@ -150,6 +155,8 @@ void clearVisited()
     }
 }
 
+// led helper functions
+
 void setRGBCycles(unsigned int red_percent, unsigned int green_percent, unsigned int blue_percent)
 {
     if (red_percent > 100 ||
@@ -165,6 +172,20 @@ void setRGBCycles(unsigned int red_percent, unsigned int green_percent, unsigned
     red_duty_cycle = (red_percent * pwm_period) / 100;
     green_duty_cycle = (green_percent * pwm_period) / 100;
     blue_duty_cycle = (blue_percent * pwm_period) / 100;
+}
+
+void setColor1(uint8_t red, uint8_t green, uint8_t blue)
+{
+    color1[0] = red;
+    color1[1] = green;
+    color1[2] = blue;
+}
+
+void setColor2(uint8_t red, uint8_t green, uint8_t blue)
+{
+    color2[0] = red;
+    color2[1] = green;
+    color2[2] = blue;
 }
 
 // TODO: Create your tick functions for each task
@@ -272,8 +293,11 @@ enum JoyStates
     JOY_HOLD,
     JOY_XY_MOVE,
     JOY_BTN_PRESS,
-    JOY_BTN_RELEASE
+    JOY_BTN_RELEASE,
+    JOY_BTN_LONG_PRESS
 } joyState;
+
+unsigned int longPressTimer = 0;
 
 int JoystickTick(int state)
 {
@@ -289,13 +313,13 @@ int JoystickTick(int state)
         break;
 
     case JOY_WAIT:
-
         if (x_pos < JOY_LOW || x_pos > JOY_HIGH || y_pos < JOY_LOW || y_pos > JOY_HIGH)
         {
             state = JOY_XY_MOVE;
         }
-        if (btn_pressed)
+        else if (btn_pressed)
         {
+            longPressTimer = 0;
             state = JOY_BTN_PRESS;
         }
         break;
@@ -314,7 +338,15 @@ int JoystickTick(int state)
     case JOY_BTN_PRESS:
         if (!btn_pressed)
         {
-            state = JOY_BTN_RELEASE;
+            if (longPressTimer < LONG_PRESS_THRESHOLD)
+            {
+                state = JOY_BTN_RELEASE;
+            }
+            else if (longPressTimer >= LONG_PRESS_THRESHOLD)
+            {
+                state = JOY_BTN_LONG_PRESS;
+            }
+            longPressTimer = 0;
         }
         break;
 
@@ -327,6 +359,10 @@ int JoystickTick(int state)
         clearVisited();
         clearMatrix();
         score = 0;
+        break;
+
+    case JOY_BTN_LONG_PRESS:
+        state = JOY_WAIT;
         break;
 
     default:
@@ -355,6 +391,14 @@ int JoystickTick(int state)
         {
             userX++;
         }
+        break;
+
+    case JOY_BTN_PRESS:
+        longPressTimer++;
+        break;
+
+    case JOY_BTN_LONG_PRESS:
+        setColor2(0, 40, 100);
         break;
 
     default:
@@ -424,9 +468,49 @@ int MatrixDispTick(int state)
 
 enum RGBStates
 {
-    RGB_OFF,
-    RGB_ON,
+    RGB_INIT,
+    RGB_COLOR_ONE,
+    RGB_COLOR_TWO,
 } rgbState;
+
+int RgbLedFlicker(int state)
+{
+
+    switch (state)
+    {
+    case RGB_INIT:
+        state = RGB_COLOR_ONE;
+        break;
+    case RGB_COLOR_ONE:
+        state = RGB_COLOR_TWO;
+        break;
+    case RGB_COLOR_TWO:
+        state = RGB_COLOR_ONE;
+        break;
+    default:
+        state = RGB_INIT;
+        break;
+    }
+
+    switch (state)
+    {
+    case RGB_COLOR_ONE:
+        red_duty_cycle = color1[0];
+        green_duty_cycle = color1[1];
+        blue_duty_cycle = color1[2];
+        break;
+
+    case RGB_COLOR_TWO:
+        red_duty_cycle = color2[0];
+        green_duty_cycle = color2[1];
+        blue_duty_cycle = color2[2];
+        break;
+    default:
+        break;
+    }
+
+    return state;
+}
 
 int RgbLedTick(int state)
 {
@@ -518,10 +602,19 @@ int main(void)
     tasks[4].elapsedTime = 0;
     tasks[4].TickFct = &RgbLedTick;
 
+    tasks[5].state = RGB_INIT;
+    tasks[5].period = RGB_LED_FLICKER_PERIOD;
+    tasks[5].elapsedTime = 0;
+    tasks[5].TickFct = &RgbLedFlicker;
+
     TimerSet(GCD_PERIOD);
     TimerOn();
 
-    setRGBCycles(60, 5, 40);
+    setColor1(20, 0, 100);
+
+    setColor2(20, 0, 100);
+    // setColor2(0, 40, 100);
+    // setColor2(0, 0, 0);
 
     while (1)
     {
