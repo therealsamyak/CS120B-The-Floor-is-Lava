@@ -3,7 +3,7 @@
 #include "periph.h"
 #include "spiAVR.h"
 
-#define NUM_TASKS 3 // TODO: Change to the number of tasks being used
+#define NUM_TASKS 4 // TODO: Change to the number of tasks being used
 
 unsigned char digits[4];
 unsigned int score = 0;
@@ -15,15 +15,17 @@ unsigned char matrixState[8] = {0};
 #define JOY_CENTER_LOW 500
 #define JOY_CENTER_HIGH 600
 
-unsigned int defaultX = 1;
-unsigned int defaultY = 1;
+unsigned int startX = 8;
+unsigned int startY = 1;
 
-unsigned int userX = defaultX;
-unsigned int userY = defaultY;
+unsigned int userX = startX;
+unsigned int userY = startY;
 
-int visited[8][8] = {0};
+int visited[9][9] = {0};
 unsigned int prevUserX = 0;
 unsigned int prevUserY = 0;
+
+int userBlink = 1;
 
 // Task struct for concurrent synchSMs implmentations
 typedef struct _task
@@ -38,9 +40,10 @@ typedef struct _task
 //  e.g. const unsined long TASK1_PERIOD = <PERIOD>
 const unsigned long GCD_PERIOD = 1; // TODO:Set the GCD Period
 
-const unsigned long DISP_PERIOD = 1;
+const unsigned long DISP_PERIOD = 5;
 const unsigned long JOY_PERIOD = 200;
-const unsigned long SCORE_PERIOD = 200;
+const unsigned long VISITED_PERIOD = 100;
+const unsigned long MATRIX_DISP_PERIOD = 503;
 
 task tasks[NUM_TASKS]; // declared task array with 5 tasks
 
@@ -110,7 +113,7 @@ void setMatrixLED(unsigned char row, unsigned char col, bool state)
 
     PORTB = SetBit(PORTB, PIN_SS, 0);
     SPI_SEND(x);
-    _delay_us(2);
+    _delay_us(4);
     SPI_SEND(matrixState[x]);
     PORTB = SetBit(PORTB, PIN_SS, 1);
 }
@@ -128,9 +131,9 @@ void clearMatrix()
 
 void clearVisited()
 {
-    for (int i = 0; i < 8; i++)
+    for (int i = 0; i < 9; i++)
     {
-        for (int j = 0; j < 8; j++)
+        for (int j = 0; j < 9; j++)
         {
             visited[i][j] = 0;
         }
@@ -240,7 +243,9 @@ enum JoyStates
     JOY_INIT,
     JOY_WAIT,
     JOY_HOLD,
-    JOY_XY_MOVE
+    JOY_XY_MOVE,
+    JOY_BTN_PRESS,
+    JOY_BTN_RELEASE
 } joyState;
 
 int JoystickTick(int state)
@@ -262,7 +267,10 @@ int JoystickTick(int state)
         {
             state = JOY_XY_MOVE;
         }
-
+        if (btn_pressed)
+        {
+            state = JOY_BTN_PRESS;
+        }
         break;
 
     case JOY_XY_MOVE:
@@ -274,6 +282,24 @@ int JoystickTick(int state)
         {
             state = JOY_WAIT;
         }
+        break;
+
+    case JOY_BTN_PRESS:
+        if (!btn_pressed)
+        {
+            state = JOY_BTN_RELEASE;
+        }
+        break;
+
+    case JOY_BTN_RELEASE:
+        state = JOY_WAIT;
+
+        // reset everything
+        userX = startX;
+        userY = startY;
+        clearVisited();
+        clearMatrix();
+        score = 0;
         break;
 
     default:
@@ -308,17 +334,10 @@ int JoystickTick(int state)
         break;
     }
 
-    if (btn_pressed)
-    {
-        userX = defaultX;
-        userY = defaultY;
-        clearVisited();
-    }
-
     return state;
 }
 
-int ScoreTick(int state)
+int VisitedTick(int state)
 {
 
     if (userX != prevUserX || userY != prevUserY)
@@ -346,6 +365,33 @@ int ScoreTick(int state)
         prevUserY = userY;
     }
 
+    return state;
+}
+
+int MatrixDispTick(int state)
+{
+    for (unsigned int i = 1; i < 9; i++)
+    {
+        for (unsigned int j = 1; j < 9; j++)
+        {
+            if (i == userX && j == userY)
+            {
+                setMatrixLED(i, j, userBlink);
+                userBlink = !userBlink;
+                continue;
+            }
+
+            if (visited[i][j])
+            {
+                setMatrixLED(i, j, true);
+            }
+
+            else
+            {
+                setMatrixLED(i, j, false);
+            }
+        }
+    }
     return state;
 }
 
@@ -384,15 +430,17 @@ int main(void)
     tasks[1].TickFct = &JoystickTick;
 
     tasks[2].state = 0;
-    tasks[2].period = SCORE_PERIOD;
+    tasks[2].period = VISITED_PERIOD;
     tasks[2].elapsedTime = 0;
-    tasks[2].TickFct = &ScoreTick;
+    tasks[2].TickFct = &VisitedTick;
+
+    tasks[3].state = 0;
+    tasks[3].period = MATRIX_DISP_PERIOD;
+    tasks[3].elapsedTime = 0;
+    tasks[3].TickFct = &MatrixDispTick;
 
     TimerSet(GCD_PERIOD);
     TimerOn();
-
-    setMatrixLED(1, 1, true);
-    setMatrixLED(1, 2, true);
 
     while (1)
     {
