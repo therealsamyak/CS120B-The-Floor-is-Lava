@@ -77,6 +77,15 @@ void TimerISR()
     }
 }
 
+void fullReset()
+{
+    clearVisited();
+    clearMatrix();
+    score = 0;
+    userX = startX;
+    userY = startY;
+}
+
 void outNum(unsigned char digit)
 {
 
@@ -354,11 +363,7 @@ int JoystickTick(int state)
         state = JOY_WAIT;
 
         // reset everything
-        userX = startX;
-        userY = startY;
-        clearVisited();
-        clearMatrix();
-        score = 0;
+        fullReset();
         break;
 
     case JOY_BTN_LONG_PRESS:
@@ -398,7 +403,7 @@ int JoystickTick(int state)
         break;
 
     case JOY_BTN_LONG_PRESS:
-        setColor2(0, 40, 100);
+        setColor2(100, 26, 0);
         break;
 
     default:
@@ -610,7 +615,7 @@ int main(void)
     TimerSet(GCD_PERIOD);
     TimerOn();
 
-    setColor1(20, 0, 100);
+    setColor1(0, 40, 100);
 
     setColor2(20, 0, 100);
     // setColor2(0, 40, 100);
