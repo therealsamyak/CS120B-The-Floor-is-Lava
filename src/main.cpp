@@ -86,7 +86,7 @@ void TimerISR()
 void outNum(unsigned char digit)
 {
 
-    static const unsigned char seg_data[] = {
+    const unsigned char seg_data[] = {
         0b00111111, // 0
         0b00000110, // 1
         0b01011011, // 2
