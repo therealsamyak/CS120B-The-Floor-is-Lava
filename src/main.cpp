@@ -15,12 +15,17 @@ unsigned char matrixState[8] = {0};
 #define JOY_CENTER_LOW 500
 #define JOY_CENTER_HIGH 600
 #define LONG_PRESS_THRESHOLD 10
+#define MAX_MOVES 8
 
 unsigned int startX = 4;
 unsigned int startY = 1;
 
 unsigned int userX = startX;
 unsigned int userY = startY;
+
+unsigned char game_mode = false;
+unsigned char correct_moves[MAX_MOVES];
+unsigned char move_count = 0;
 
 int visited[9][9] = {0};
 unsigned int prevUserX = 0;
@@ -129,7 +134,6 @@ void setMatrixLED(unsigned char row, unsigned char col, bool state)
     PORTB = SetBit(PORTB, PIN_SS, 0);
     SPI_SEND(x);
     SPI_SEND(matrixState[x]);
-    _delay_us(2);
     PORTB = SetBit(PORTB, PIN_SS, 1);
 }
 
@@ -156,13 +160,43 @@ void clearVisited()
     }
 }
 
-void fullReset()
+void clearMasterMoves()
 {
-    clearVisited();
-    clearMatrix();
-    score = 0;
+    for (int i = 0; i < 9; i++)
+    {
+        for (int j = 0; j < 9; j++)
+        {
+            correct_moves[i][j] = 0;
+        }
+    }
+}
+
+void playerReset()
+{
+    score = 100;
+    move_count = 0;
+    startY = correct_moves[0] % 10;
+    startX = (correct_moves[0] - startY) / 10;
+    prevUserX = startX;
+    prevUserY = startY;
     userX = startX;
     userY = startY;
+    clearVisited();
+    clearMatrix();
+}
+
+void masterReset()
+{
+    userX = 4;
+    userY = 1;
+    prevUserX = -1;
+    prevUserY = -1;
+    score = 0;
+    move_count = 0;
+    game_mode = 0;
+    clearVisited();
+    clearMatrix();
+    clearMasterMoves();
 }
 // led helper functions
 
@@ -363,7 +397,7 @@ int JoystickTick(int state)
         state = JOY_WAIT;
 
         // reset everything
-        fullReset();
+        playerReset();
         break;
 
     case JOY_BTN_LONG_PRESS:
@@ -423,18 +457,6 @@ int VisitedTick(int state)
         {
 
             visited[userX][userY] = 1;
-
-            if (score < 9999)
-            {
-                score += 1;
-            }
-        }
-        else
-        {
-            if (score > 0)
-            {
-                score -= 1;
-            }
         }
 
         prevUserX = userX;
