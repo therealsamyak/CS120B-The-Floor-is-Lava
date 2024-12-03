@@ -3,7 +3,9 @@
 #include "periph.h"
 #include "spiAVR.h"
 
-#define NUM_TASKS 6 // TODO: Change to the number of tasks being used
+#include "serialATmega.h"
+
+#define NUM_TASKS 8 // TODO: Change to the number of tasks being used
 
 unsigned char digits[4];
 unsigned int score = 0;
@@ -26,6 +28,7 @@ unsigned int userY = startY;
 unsigned char game_mode = false;
 unsigned char correct_moves[MAX_MOVES];
 unsigned char move_count = 0;
+unsigned char firstMoveRecorded = false;
 
 int visited[9][9] = {0};
 unsigned int prevUserX = 0;
@@ -162,12 +165,9 @@ void clearVisited()
 
 void clearMasterMoves()
 {
-    for (int i = 0; i < 9; i++)
+    for (int i = 0; i < MAX_MOVES; i++)
     {
-        for (int j = 0; j < 9; j++)
-        {
-            correct_moves[i][j] = 0;
-        }
+        correct_moves[i] = 0;
     }
 }
 
@@ -177,8 +177,8 @@ void playerReset()
     move_count = 0;
     startY = correct_moves[0] % 10;
     startX = (correct_moves[0] - startY) / 10;
-    prevUserX = startX;
-    prevUserY = startY;
+    prevUserX = -1;
+    prevUserY = -1;
     userX = startX;
     userY = startY;
     clearVisited();
@@ -194,6 +194,7 @@ void masterReset()
     score = 0;
     move_count = 0;
     game_mode = 0;
+    firstMoveRecorded = false;
     clearVisited();
     clearMatrix();
     clearMasterMoves();
@@ -344,104 +345,262 @@ unsigned int longPressTimer = 0;
 
 int JoystickTick(int state)
 {
-    unsigned int x_pos = ADC_read(1);
-    unsigned int y_pos = ADC_read(0);
-    unsigned int btn_pressed = ADC_read(2) < 200;
-
-    // State transitions
-    switch (state)
+    if (game_mode)
     {
-    case JOY_INIT:
-        state = JOY_WAIT;
-        break;
+        unsigned int x_pos = ADC_read(1);
+        unsigned int y_pos = ADC_read(0);
+        unsigned int btn_pressed = ADC_read(2) < 200;
 
-    case JOY_WAIT:
-        if (x_pos < JOY_LOW || x_pos > JOY_HIGH || y_pos < JOY_LOW || y_pos > JOY_HIGH)
+        // State transitions
+        switch (state)
         {
-            state = JOY_XY_MOVE;
-        }
-        else if (btn_pressed)
-        {
-            longPressTimer = 0;
-            state = JOY_BTN_PRESS;
-        }
-        break;
-
-    case JOY_XY_MOVE:
-        state = JOY_HOLD;
-        break;
-
-    case JOY_HOLD:
-        if (x_pos > JOY_CENTER_LOW && x_pos < JOY_CENTER_HIGH && y_pos > JOY_CENTER_LOW && y_pos < JOY_CENTER_HIGH)
-        {
+        case JOY_INIT:
             state = JOY_WAIT;
-        }
-        break;
+            break;
 
-    case JOY_BTN_PRESS:
-        if (!btn_pressed)
+        case JOY_WAIT:
+            if (x_pos < JOY_LOW || x_pos > JOY_HIGH || y_pos < JOY_LOW || y_pos > JOY_HIGH)
+            {
+                state = JOY_XY_MOVE;
+            }
+            else if (btn_pressed)
+            {
+                longPressTimer = 0;
+                state = JOY_BTN_PRESS;
+            }
+            break;
+
+        case JOY_XY_MOVE:
+            state = JOY_HOLD;
+            break;
+
+        case JOY_HOLD:
+            if (x_pos > JOY_CENTER_LOW && x_pos < JOY_CENTER_HIGH && y_pos > JOY_CENTER_LOW && y_pos < JOY_CENTER_HIGH)
+            {
+                state = JOY_WAIT;
+            }
+            break;
+
+        case JOY_BTN_PRESS:
+            if (!btn_pressed)
+            {
+                if (longPressTimer < LONG_PRESS_THRESHOLD)
+                {
+                    state = JOY_BTN_RELEASE;
+                }
+                else if (longPressTimer >= LONG_PRESS_THRESHOLD)
+                {
+                    state = JOY_BTN_LONG_PRESS;
+                }
+                longPressTimer = 0;
+            }
+            break;
+
+        case JOY_BTN_RELEASE:
+            state = JOY_WAIT;
+
+            // reset everything
+            playerReset();
+            break;
+
+        case JOY_BTN_LONG_PRESS:
+            state = JOY_WAIT;
+            break;
+
+        default:
+            state = JOY_INIT;
+            break;
+        }
+
+        // State actions
+        switch (state)
         {
-            if (longPressTimer < LONG_PRESS_THRESHOLD)
+        case JOY_XY_MOVE:
+            if (y_pos < JOY_LOW && userY > 1)
             {
-                state = JOY_BTN_RELEASE;
+                userY--;
             }
-            else if (longPressTimer >= LONG_PRESS_THRESHOLD)
+            else if (y_pos > JOY_HIGH && userY < 8)
             {
-                state = JOY_BTN_LONG_PRESS;
+                userY++;
             }
-            longPressTimer = 0;
+
+            if (x_pos < JOY_LOW && userX > 1)
+            {
+                userX--;
+            }
+            else if (x_pos > JOY_HIGH && userX < 8)
+            {
+                userX++;
+            }
+            break;
+
+        case JOY_BTN_PRESS:
+            longPressTimer++;
+            break;
+
+        case JOY_BTN_LONG_PRESS:
+            masterReset();
+            break;
+
+        default:
+            break;
         }
-        break;
-
-    case JOY_BTN_RELEASE:
-        state = JOY_WAIT;
-
-        // reset everything
-        playerReset();
-        break;
-
-    case JOY_BTN_LONG_PRESS:
-        state = JOY_WAIT;
-        break;
-
-    default:
-        state = JOY_INIT;
-        break;
     }
+    return state;
+}
 
-    // State actions
-    switch (state)
+int MasterJoystickTick(int state)
+{
+    if (!game_mode)
     {
-    case JOY_XY_MOVE:
-        if (y_pos < JOY_LOW && userY > 1)
+        unsigned int x_pos = ADC_read(1);
+        unsigned int y_pos = ADC_read(0);
+        unsigned int btn_pressed = ADC_read(2) < 200;
+
+        // State transitions
+        switch (state)
         {
-            userY--;
-        }
-        else if (y_pos > JOY_HIGH && userY < 8)
-        {
-            userY++;
+        case JOY_INIT:
+            state = JOY_WAIT;
+            break;
+
+        case JOY_WAIT:
+            if (x_pos < JOY_LOW || x_pos > JOY_HIGH || y_pos < JOY_LOW || y_pos > JOY_HIGH)
+            {
+                state = JOY_XY_MOVE;
+            }
+            else if (btn_pressed)
+            {
+                longPressTimer = 0;
+                state = JOY_BTN_PRESS;
+            }
+            break;
+
+        case JOY_XY_MOVE:
+            state = JOY_HOLD;
+            break;
+
+        case JOY_HOLD:
+            if (x_pos > JOY_CENTER_LOW && x_pos < JOY_CENTER_HIGH && y_pos > JOY_CENTER_LOW && y_pos < JOY_CENTER_HIGH)
+            {
+                state = JOY_WAIT;
+            }
+            break;
+
+        case JOY_BTN_PRESS:
+            if (!btn_pressed)
+            {
+                if (longPressTimer < LONG_PRESS_THRESHOLD)
+                {
+                    state = JOY_BTN_RELEASE;
+                }
+                else if (longPressTimer >= LONG_PRESS_THRESHOLD)
+                {
+                    state = JOY_BTN_LONG_PRESS;
+                }
+                longPressTimer = 0;
+            }
+            break;
+
+        case JOY_BTN_RELEASE:
+            state = JOY_WAIT;
+
+            if (userY <= 1 && !firstMoveRecorded)
+            {
+                firstMoveRecorded = true;
+                startX = userX;
+                startY = userY;
+                correct_moves[move_count] = userX * 10 + userY;
+                serial_println(correct_moves[move_count]);
+                move_count++;
+            }
+
+            if (!game_mode && move_count >= MAX_MOVES)
+            {
+                move_count = 0;
+                game_mode = true;
+                playerReset();
+            }
+            break;
+
+        case JOY_BTN_LONG_PRESS:
+            state = JOY_WAIT;
+
+            userX = 4;
+            userY = 1;
+            move_count = 0;
+            firstMoveRecorded = false;
+            clearMasterMoves();
+            break;
+
+        default:
+            state = JOY_INIT;
+            break;
         }
 
-        if (x_pos < JOY_LOW && userX > 1)
+        // State actions
+        switch (state)
         {
-            userX--;
+        case JOY_XY_MOVE:
+            if (move_count < MAX_MOVES)
+            {
+                if (firstMoveRecorded)
+                {
+                    if (y_pos < JOY_LOW && userY > 1)
+                    {
+                        userY--;
+                        if (x_pos < JOY_LOW && userX > 1)
+                        {
+                            userX--;
+                        }
+                        else if (x_pos > JOY_HIGH && userX < 8)
+                        {
+                            userX++;
+                        }
+                        correct_moves[move_count] = userX * 10 + userY;
+                        serial_println(correct_moves[move_count]);
+                        move_count++;
+                    }
+                    else if (y_pos > JOY_HIGH && userY < 8)
+                    {
+                        userY++;
+                        if (x_pos < JOY_LOW && userX > 1)
+                        {
+                            userX--;
+                        }
+                        else if (x_pos > JOY_HIGH && userX < 8)
+                        {
+                            userX++;
+                        }
+                        correct_moves[move_count] = userX * 10 + userY;
+                        serial_println(correct_moves[move_count]);
+                        move_count++;
+                    }
+                }
+
+                else
+                {
+                    if (x_pos < JOY_LOW && userX > 1)
+                    {
+                        userX--;
+                    }
+                    else if (x_pos > JOY_HIGH && userX < 8)
+                    {
+                        userX++;
+                    }
+                }
+            }
+
+            break;
+
+        case JOY_BTN_PRESS:
+            longPressTimer++;
+            break;
+
+        default:
+            break;
         }
-        else if (x_pos > JOY_HIGH && userX < 8)
-        {
-            userX++;
-        }
-        break;
-
-    case JOY_BTN_PRESS:
-        longPressTimer++;
-        break;
-
-    case JOY_BTN_LONG_PRESS:
-        setColor2(100, 26, 0);
-        break;
-
-    default:
-        break;
     }
 
     return state;
@@ -468,25 +627,72 @@ int VisitedTick(int state)
 
 int MatrixDispTick(int state)
 {
-    for (unsigned int i = 1; i < 9; i++)
+    if (game_mode)
     {
-        for (unsigned int j = 1; j < 9; j++)
+        for (unsigned int i = 1; i < 9; i++)
         {
-            if (i == userX && j == userY)
+            for (unsigned int j = 1; j < 9; j++)
             {
-                setMatrixLED(i, j, userBlink);
-                userBlink = !userBlink;
-                continue;
-            }
+                if (i == userX && j == userY)
+                {
+                    setMatrixLED(i, j, userBlink);
+                    userBlink = !userBlink;
+                    continue;
+                }
 
-            if (visited[i][j])
-            {
-                setMatrixLED(i, j, true);
-            }
+                if (visited[i][j])
+                {
+                    setMatrixLED(i, j, true);
+                }
 
-            else
+                else
+                {
+                    setMatrixLED(i, j, false);
+                }
+            }
+        }
+    }
+    return state;
+}
+
+int MasterMatrixDispTick(int state)
+{
+    if (!game_mode)
+    {
+        for (unsigned int i = 1; i < 9; i++)
+        {
+            for (unsigned int j = 1; j < 9; j++)
             {
-                setMatrixLED(i, j, false);
+
+                if (i == userX && j == userY)
+                {
+                    setMatrixLED(i, j, userBlink);
+                    userBlink = !userBlink;
+                    continue;
+                }
+
+                bool is_move = false;
+                for (int k = 0; k < move_count; k++)
+                {
+                    unsigned int move = correct_moves[k];
+                    unsigned int moveX = move / 10;
+                    unsigned int moveY = move % 10;
+
+                    if (i == moveX && j == moveY)
+                    {
+                        is_move = true;
+                        break;
+                    }
+                }
+
+                if (is_move)
+                {
+                    setMatrixLED(i, j, true);
+                }
+                else
+                {
+                    setMatrixLED(i, j, false);
+                }
             }
         }
     }
@@ -502,38 +708,34 @@ enum RGBStates
 
 int RgbLedFlicker(int state)
 {
+    // switch (state)
+    // {
+    // case RGB_INIT:
+    //     state = RGB_COLOR_ONE;
+    //     break;
+    // case RGB_COLOR_ONE:
+    //     state = RGB_COLOR_TWO;
+    //     break;
+    // case RGB_COLOR_TWO:
+    //     state = RGB_COLOR_ONE;
+    //     break;
+    // default:
+    //     state = RGB_INIT;
+    //     break;
+    // }
 
-    switch (state)
+    if (game_mode == 0)
     {
-    case RGB_INIT:
-        state = RGB_COLOR_ONE;
-        break;
-    case RGB_COLOR_ONE:
-        state = RGB_COLOR_TWO;
-        break;
-    case RGB_COLOR_TWO:
-        state = RGB_COLOR_ONE;
-        break;
-    default:
-        state = RGB_INIT;
-        break;
-    }
 
-    switch (state)
-    {
-    case RGB_COLOR_ONE:
         red_duty_cycle = color1[0];
         green_duty_cycle = color1[1];
         blue_duty_cycle = color1[2];
-        break;
-
-    case RGB_COLOR_TWO:
+    }
+    else if (game_mode == 1)
+    {
         red_duty_cycle = color2[0];
         green_duty_cycle = color2[1];
         blue_duty_cycle = color2[2];
-        break;
-    default:
-        break;
     }
 
     return state;
@@ -591,6 +793,8 @@ int main(void)
     PORTB = 0x00;
     PORTD = 0x00;
 
+    serial_init(9600);
+
     ADC_init(); // initializes ADC
 
     // initialize 8x8 led matrix
@@ -633,6 +837,16 @@ int main(void)
     tasks[5].period = RGB_LED_FLICKER_PERIOD;
     tasks[5].elapsedTime = 0;
     tasks[5].TickFct = &RgbLedFlicker;
+
+    tasks[6].state = JOY_INIT;
+    tasks[6].period = JOY_PERIOD;
+    tasks[6].elapsedTime = 0;
+    tasks[6].TickFct = &MasterJoystickTick;
+
+    tasks[7].state = 0;
+    tasks[7].period = MATRIX_DISP_PERIOD;
+    tasks[7].elapsedTime = 0;
+    tasks[7].TickFct = &MasterMatrixDispTick;
 
     TimerSet(GCD_PERIOD);
     TimerOn();
