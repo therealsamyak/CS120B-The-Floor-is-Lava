@@ -16,8 +16,8 @@ unsigned char matrixState[8] = {0};
 #define JOY_CENTER_HIGH 600
 #define LONG_PRESS_THRESHOLD 10
 
-unsigned int startX = 8;
-unsigned int startY = 8;
+unsigned int startX = 4;
+unsigned int startY = 1;
 
 unsigned int userX = startX;
 unsigned int userY = startY;
@@ -77,15 +77,6 @@ void TimerISR()
     }
 }
 
-void fullReset()
-{
-    clearVisited();
-    clearMatrix();
-    score = 0;
-    userX = startX;
-    userY = startY;
-}
-
 void outNum(unsigned char digit)
 {
 
@@ -137,8 +128,8 @@ void setMatrixLED(unsigned char row, unsigned char col, bool state)
 
     PORTB = SetBit(PORTB, PIN_SS, 0);
     SPI_SEND(x);
-    _delay_us(4);
     SPI_SEND(matrixState[x]);
+    _delay_us(2);
     PORTB = SetBit(PORTB, PIN_SS, 1);
 }
 
@@ -149,6 +140,7 @@ void clearMatrix()
         PORTB = SetBit(PORTB, PIN_SS, 0);
         SPI_SEND(i);
         SPI_SEND(0x00);
+        _delay_us(2);
         PORTB = SetBit(PORTB, PIN_SS, 1);
     }
 }
@@ -164,6 +156,14 @@ void clearVisited()
     }
 }
 
+void fullReset()
+{
+    clearVisited();
+    clearMatrix();
+    score = 0;
+    userX = startX;
+    userY = startY;
+}
 // led helper functions
 
 void setRGBCycles(unsigned int red_percent, unsigned int green_percent, unsigned int blue_percent)
