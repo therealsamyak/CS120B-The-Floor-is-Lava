@@ -3,8 +3,6 @@
 #include "periph.h"
 #include "spiAVR.h"
 
-#include "serialATmega.h"
-
 #define NUM_TASKS 8 // TODO: Change to the number of tasks being used
 
 unsigned char digits[4];
@@ -512,7 +510,6 @@ int MasterJoystickTick(int state)
                 startX = userX;
                 startY = userY;
                 correct_moves[move_count] = userX * 10 + userY;
-                serial_println(correct_moves[move_count]);
                 move_count++;
             }
 
@@ -559,7 +556,6 @@ int MasterJoystickTick(int state)
                             userX++;
                         }
                         correct_moves[move_count] = userX * 10 + userY;
-                        serial_println(correct_moves[move_count]);
                         move_count++;
                     }
                     else if (y_pos > JOY_HIGH && userY < 8)
@@ -574,7 +570,6 @@ int MasterJoystickTick(int state)
                             userX++;
                         }
                         correct_moves[move_count] = userX * 10 + userY;
-                        serial_println(correct_moves[move_count]);
                         move_count++;
                     }
                 }
@@ -793,8 +788,6 @@ int main(void)
     PORTB = 0x00;
     PORTD = 0x00;
 
-    serial_init(9600);
-
     ADC_init(); // initializes ADC
 
     // initialize 8x8 led matrix
@@ -851,9 +844,9 @@ int main(void)
     TimerSet(GCD_PERIOD);
     TimerOn();
 
-    setColor1(0, 40, 100);
+    setColor2(0, 40, 100);
 
-    setColor2(20, 0, 100);
+    setColor1(20, 0, 100);
     // setColor2(0, 40, 100);
     // setColor2(0, 0, 0);
 
