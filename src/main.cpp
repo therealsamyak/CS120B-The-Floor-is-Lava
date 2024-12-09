@@ -517,7 +517,7 @@ int MasterJoystickTick(int state)
                 move_count++;
             }
 
-            if (!game_mode && move_count >= MAX_MOVES)
+            else if (move_count >= MAX_MOVES)
             {
                 move_count = 0;
                 game_mode = true;
