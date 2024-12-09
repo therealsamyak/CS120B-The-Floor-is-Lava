@@ -3,6 +3,8 @@
 #include "periph.h"
 #include "spiAVR.h"
 
+#include "serialATmega.h"
+
 #define NUM_TASKS 8 // TODO: Change to the number of tasks being used
 
 unsigned char digits[4];
@@ -27,6 +29,7 @@ unsigned char game_mode = false;
 unsigned char correct_moves[MAX_MOVES];
 unsigned char move_count = 0;
 unsigned char firstMoveRecorded = false;
+unsigned char winner = false;
 
 int visited[9][9] = {0};
 unsigned int prevUserX = 0;
@@ -174,20 +177,36 @@ void clearMasterMoves()
 
 void playerReset()
 {
-    score = 100;
-    move_count = 0;
+    score = 10;
+    move_count = 1;
     startY = correct_moves[0] % 10;
     startX = (correct_moves[0] - startY) / 10;
-    prevUserX = -1;
-    prevUserY = -1;
+    prevUserX = startX;
+    prevUserY = startY;
     userX = startX;
     userY = startY;
     clearVisited();
     clearMatrix();
+    visited[startX][startY] = 1;
+}
+
+void playerResetNoScore()
+{
+    move_count = 1;
+    startY = correct_moves[0] % 10;
+    startX = (correct_moves[0] - startY) / 10;
+    userX = startX;
+    userY = startY;
+    prevUserX = startX;
+    prevUserY = startY;
+    clearVisited();
+    clearMatrix();
+    visited[startX][startY] = 1;
 }
 
 void masterReset()
 {
+    winner = false;
     userX = 4;
     userY = 1;
     prevUserX = -1;
@@ -200,6 +219,7 @@ void masterReset()
     clearMatrix();
     clearMasterMoves();
 }
+
 // led helper functions
 
 void setRGBCycles(unsigned int red_percent, unsigned int green_percent, unsigned int blue_percent)
@@ -231,6 +251,15 @@ void setColor2(uint8_t red, uint8_t green, uint8_t blue)
     color2[0] = red;
     color2[1] = green;
     color2[2] = blue;
+}
+
+void winnerReset()
+{
+    winner = true;
+    userX = -1;
+    userY = -1;
+    setColor1(100, 0, 0);
+    setColor2(0, 0, 100);
 }
 
 // TODO: Create your tick functions for each task
@@ -346,7 +375,7 @@ unsigned int longPressTimer = 0;
 
 int JoystickTick(int state)
 {
-    if (game_mode)
+    if (game_mode && !winner)
     {
         unsigned int x_pos = ADC_read(1);
         unsigned int y_pos = ADC_read(0);
@@ -420,20 +449,28 @@ int JoystickTick(int state)
             if (y_pos < JOY_LOW && userY > 1)
             {
                 userY--;
+                if (x_pos < JOY_LOW && userX > 1)
+                {
+                    userX--;
+                }
+                else if (x_pos > JOY_HIGH && userX < 8)
+                {
+                    userX++;
+                }
             }
             else if (y_pos > JOY_HIGH && userY < 8)
             {
                 userY++;
+                if (x_pos < JOY_LOW && userX > 1)
+                {
+                    userX--;
+                }
+                else if (x_pos > JOY_HIGH && userX < 8)
+                {
+                    userX++;
+                }
             }
 
-            if (x_pos < JOY_LOW && userX > 1)
-            {
-                userX--;
-            }
-            else if (x_pos > JOY_HIGH && userX < 8)
-            {
-                userX++;
-            }
             break;
 
         case JOY_BTN_PRESS:
@@ -453,7 +490,7 @@ int JoystickTick(int state)
 
 int MasterJoystickTick(int state)
 {
-    if (!game_mode)
+    if (!game_mode && !winner)
     {
         unsigned int x_pos = ADC_read(1);
         unsigned int y_pos = ADC_read(0);
@@ -607,20 +644,37 @@ int MasterJoystickTick(int state)
 
 int VisitedTick(int state)
 {
-
-    if (userX != prevUserX || userY != prevUserY)
+    if ((userX != prevUserX || userY != prevUserY) && userX > 0 && userY > 0)
     {
-
-        if (visited[userX][userY] == 0)
+        if (!game_mode)
         {
-
             visited[userX][userY] = 1;
         }
+        else
+        {
+            unsigned int move = correct_moves[move_count];
+            serial_println(move);
+            unsigned int moveX = move / 10;
+            unsigned int moveY = move % 10;
+            if (userX != moveX || userY != moveY)
+            {
+                score -= 1;
+                playerResetNoScore();
+            }
+            else
+            {
+                visited[userX][userY] = 1;
+                move_count++;
 
+                if (move_count >= MAX_MOVES)
+                {
+                    winnerReset();
+                }
+            }
+        }
         prevUserX = userX;
         prevUserY = userY;
     }
-
     return state;
 }
 
@@ -635,19 +689,11 @@ int MatrixDispTick(int state)
                 if (i == userX && j == userY)
                 {
                     setMatrixLED(i, j, userBlink);
-                    userBlink = !userBlink;
+                    userBlink = winner ? 1 : !userBlink;
                     continue;
                 }
 
-                if (visited[i][j])
-                {
-                    setMatrixLED(i, j, true);
-                }
-
-                else
-                {
-                    setMatrixLED(i, j, false);
-                }
+                setMatrixLED(i, j, visited[i][j]);
             }
         }
     }
@@ -684,14 +730,7 @@ int MasterMatrixDispTick(int state)
                     }
                 }
 
-                if (is_move)
-                {
-                    setMatrixLED(i, j, true);
-                }
-                else
-                {
-                    setMatrixLED(i, j, false);
-                }
+                setMatrixLED(i, j, is_move);
             }
         }
     }
@@ -745,14 +784,14 @@ int RgbLedFlicker(int state)
     else
     {
         if (!game_mode)
-    {
+        {
 
             red_percent = color1[0];
             green_percent = color1[1];
             blue_percent = color1[2];
-    }
-        else if (game_mode)
-    {
+        }
+        else
+        {
             red_percent = color2[0];
             green_percent = color2[1];
             blue_percent = color2[2];
@@ -815,6 +854,8 @@ int main(void)
     PORTC = 0x07;
     PORTB = 0x00;
     PORTD = 0x00;
+
+    serial_init(9600);
 
     ADC_init(); // initializes ADC
 
