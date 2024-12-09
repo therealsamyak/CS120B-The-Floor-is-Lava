@@ -6,7 +6,7 @@
 #define NUM_TASKS 8 // TODO: Change to the number of tasks being used
 
 unsigned char digits[4];
-unsigned int score = 0;
+unsigned int score = 1;
 
 unsigned char matrixState[8] = {0};
 
@@ -189,7 +189,7 @@ void masterReset()
     userY = 1;
     prevUserX = -1;
     prevUserY = -1;
-    score = 0;
+    score = 1;
     move_count = 0;
     game_mode = 0;
     firstMoveRecorded = false;
@@ -455,6 +455,7 @@ int MasterJoystickTick(int state)
         unsigned int x_pos = ADC_read(1);
         unsigned int y_pos = ADC_read(0);
         unsigned int btn_pressed = ADC_read(2) < 200;
+        score = move_count;
 
         // State transitions
         switch (state)
