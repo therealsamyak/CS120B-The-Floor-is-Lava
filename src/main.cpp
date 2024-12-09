@@ -35,13 +35,16 @@ unsigned int prevUserY = 0;
 int userBlink = 1;
 
 // rgb led stuff
-unsigned int pwm_period = 10;
+unsigned int pwm_period = 15;
 unsigned int red_duty_cycle = 0;
 unsigned int red_counter = 0;
 unsigned int green_duty_cycle = 0;
 unsigned int green_counter = 0;
 unsigned int blue_duty_cycle = 0;
 unsigned int blue_counter = 0;
+unsigned int red_percent = 0;
+unsigned int green_percent = 0;
+unsigned int blue_percent = 0;
 
 unsigned int color1[3] = {0};
 unsigned int color2[3] = {0};
@@ -704,35 +707,59 @@ enum RGBStates
 
 int RgbLedFlicker(int state)
 {
-    // switch (state)
-    // {
-    // case RGB_INIT:
-    //     state = RGB_COLOR_ONE;
-    //     break;
-    // case RGB_COLOR_ONE:
-    //     state = RGB_COLOR_TWO;
-    //     break;
-    // case RGB_COLOR_TWO:
-    //     state = RGB_COLOR_ONE;
-    //     break;
-    // default:
-    //     state = RGB_INIT;
-    //     break;
-    // }
+    if (winner)
+    {
+        switch (state)
+        {
+        case RGB_INIT:
+            state = RGB_COLOR_ONE;
+            break;
+        case RGB_COLOR_ONE:
+            state = RGB_COLOR_TWO;
+            break;
+        case RGB_COLOR_TWO:
+            state = RGB_COLOR_ONE;
+            break;
+        default:
+            state = RGB_INIT;
+            break;
+        }
 
-    if (game_mode == 0)
+        switch (state)
+        {
+        case RGB_COLOR_ONE:
+            red_percent = color1[0];
+            green_percent = color1[1];
+            blue_percent = color1[2];
+            break;
+
+        case RGB_COLOR_TWO:
+            red_percent = color2[0];
+            green_percent = color2[1];
+            blue_percent = color2[2];
+            break;
+        default:
+            break;
+        }
+    }
+    else
+    {
+        if (!game_mode)
     {
 
-        red_duty_cycle = color1[0];
-        green_duty_cycle = color1[1];
-        blue_duty_cycle = color1[2];
+            red_percent = color1[0];
+            green_percent = color1[1];
+            blue_percent = color1[2];
     }
-    else if (game_mode == 1)
+        else if (game_mode)
     {
-        red_duty_cycle = color2[0];
-        green_duty_cycle = color2[1];
-        blue_duty_cycle = color2[2];
+            red_percent = color2[0];
+            green_percent = color2[1];
+            blue_percent = color2[2];
+        }
     }
+
+    setRGBCycles(red_percent, green_percent, blue_percent);
 
     return state;
 }
