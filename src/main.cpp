@@ -809,11 +809,11 @@ int RgbLedTick(int state)
     // red pin
     if (red_counter < red_duty_cycle)
     {
-        PORTC = SetBit(PORTC, 3, 1);
+        PORTC = SetBit(PORTC, 5, 1);
     }
     else
     {
-        PORTC = SetBit(PORTC, 3, 0);
+        PORTC = SetBit(PORTC, 5, 0);
     }
 
     // green pin
@@ -829,11 +829,11 @@ int RgbLedTick(int state)
     // blue pin
     if (blue_counter < blue_duty_cycle)
     {
-        PORTC = SetBit(PORTC, 5, 1);
+        PORTC = SetBit(PORTC, 3, 1);
     }
     else
     {
-        PORTC = SetBit(PORTC, 5, 0);
+        PORTC = SetBit(PORTC, 3, 0);
     }
 
     // update counter
