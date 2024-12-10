@@ -3,8 +3,6 @@
 #include "periph.h"
 #include "spiAVR.h"
 
-#include "serialATmega.h"
-
 #define NUM_TASKS 8 // TODO: Change to the number of tasks being used
 
 unsigned char digits[4];
@@ -258,8 +256,17 @@ void winnerReset()
     winner = true;
     userX = -1;
     userY = -1;
-    setColor1(100, 0, 0);
+    setColor1(20, 90, 10);
     setColor2(0, 0, 100);
+}
+
+void loserReset()
+{
+    winner = true;
+    userX = -1;
+    userY = -1;
+    setColor1(100, 0, 0);
+    setColor2(0, 0, 0);
 }
 
 // TODO: Create your tick functions for each task
@@ -653,13 +660,20 @@ int VisitedTick(int state)
         else
         {
             unsigned int move = correct_moves[move_count];
-            serial_println(move);
             unsigned int moveX = move / 10;
             unsigned int moveY = move % 10;
             if (userX != moveX || userY != moveY)
             {
                 score -= 1;
-                playerResetNoScore();
+                if (score <= 0)
+                {
+                    loserReset();
+                }
+                else
+                {
+
+                    playerResetNoScore();
+                }
             }
             else
             {
@@ -855,8 +869,6 @@ int main(void)
     PORTB = 0x00;
     PORTD = 0x00;
 
-    serial_init(9600);
-
     ADC_init(); // initializes ADC
 
     // initialize 8x8 led matrix
@@ -915,7 +927,7 @@ int main(void)
 
     setColor2(0, 40, 100);
 
-    setColor1(20, 0, 100);
+    setColor1(50, 0, 90);
     // setColor2(0, 40, 100);
     // setColor2(0, 0, 0);
 
