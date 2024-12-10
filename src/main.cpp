@@ -2,8 +2,9 @@
 #include "helper.h"
 #include "periph.h"
 #include "spiAVR.h"
+#include "note.h"
 
-#define NUM_TASKS 9 // TODO: Change to the number of tasks being used
+#define NUM_TASKS 10 // TODO: Change to the number of tasks being used
 
 unsigned char digits[4];
 unsigned int score = 1;
@@ -62,6 +63,13 @@ typedef struct _task
     int (*TickFct)(int);       // Task tick function
 } task;
 
+typedef struct _note
+{
+    unsigned char value;
+    unsigned char octive;
+    unsigned int duration;
+} note;
+
 // TODO: Define Periods for each task
 //  e.g. const unsined long TASK1_PERIOD = <PERIOD>
 const unsigned long GCD_PERIOD = 1; // TODO:Set the GCD Period
@@ -72,6 +80,7 @@ const unsigned long VISITED_PERIOD = 100;
 const unsigned long MATRIX_DISP_PERIOD = 650;
 const unsigned long RGB_LED_FLICKER_PERIOD = 600;
 const unsigned long RGB_LED_PERIOD = 1;
+const unsigned long BUZZER_PERIOD = 1;
 
 task tasks[NUM_TASKS]; // declared task array with 5 tasks
 
@@ -286,11 +295,11 @@ void loserReset()
 
 enum DispStates
 {
-    D_INIT,
-    D1,
-    D2,
-    D3,
-    D4
+    DISP_INIT,
+    DISP_1,
+    DISP_2,
+    DISP_3,
+    DISP_4
 } dispState;
 
 int DisplayTick(int state)
@@ -305,23 +314,23 @@ int DisplayTick(int state)
 
     switch (state)
     {
-    case D_INIT:
-        state = D1;
+    case DISP_INIT:
+        state = DISP_1;
         break;
-    case D1:
-        state = D2;
+    case DISP_1:
+        state = DISP_2;
         break;
-    case D2:
-        state = D3;
+    case DISP_2:
+        state = DISP_3;
         break;
-    case D3:
-        state = D4;
+    case DISP_3:
+        state = DISP_4;
         break;
-    case D4:
-        state = D1;
+    case DISP_4:
+        state = DISP_1;
         break;
     default:
-        state = D_INIT;
+        state = DISP_INIT;
         break;
     }
 
@@ -332,7 +341,7 @@ int DisplayTick(int state)
 
     switch (state)
     {
-    case D1:
+    case DISP_1:
         if (num_display)
         {
             outNum(digits[0]);
@@ -344,7 +353,7 @@ int DisplayTick(int state)
         }
         break;
 
-    case D2:
+    case DISP_2:
         if (score >= 10 && num_display)
         {
             outNum(digits[1]);
@@ -356,7 +365,7 @@ int DisplayTick(int state)
         }
         break;
 
-    case D3:
+    case DISP_3:
         if (score >= 100 && num_display)
         {
             outNum(digits[2]);
@@ -368,7 +377,7 @@ int DisplayTick(int state)
         }
         break;
 
-    case D4:
+    case DISP_4:
         if (score >= 1000 && num_display)
         {
             outNum(digits[3]);
@@ -970,6 +979,9 @@ int main(void)
     SPI_INIT();
     MAX7219_INIT();
 
+    // initialize passive buzzer
+    buzzer_init();
+
     // TODO: Initialize tasks here
     //  e.g.
     //  tasks[0].period = ;
@@ -1021,6 +1033,11 @@ int main(void)
     tasks[8].period = JOY_PERIOD;
     tasks[8].elapsedTime = 0;
     tasks[8].TickFct = &WinnerTick;
+
+    tasks[9].state = 0;
+    tasks[9].period = BUZZER_PERIOD;
+    tasks[9].elapsedTime = 0;
+    tasks[9].TickFct = &NoteTick;
 
     TimerSet(GCD_PERIOD);
     TimerOn();
