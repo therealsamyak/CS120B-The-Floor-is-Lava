@@ -3,10 +3,11 @@
 #include "periph.h"
 #include "spiAVR.h"
 
-#define NUM_TASKS 8 // TODO: Change to the number of tasks being used
+#define NUM_TASKS 9 // TODO: Change to the number of tasks being used
 
 unsigned char digits[4];
 unsigned int score = 1;
+unsigned int num_display = true;
 
 unsigned char matrixState[8] = {0};
 
@@ -176,6 +177,7 @@ void clearMasterMoves()
 void playerReset()
 {
     score = 10;
+    num_display = true;
     move_count = 1;
     startY = correct_moves[0] % 10;
     startX = (correct_moves[0] - startY) / 10;
@@ -191,6 +193,7 @@ void playerReset()
 void playerResetNoScore()
 {
     move_count = 1;
+    num_display = true;
     startY = correct_moves[0] % 10;
     startX = (correct_moves[0] - startY) / 10;
     userX = startX;
@@ -205,6 +208,7 @@ void playerResetNoScore()
 void masterReset()
 {
     winner = false;
+    num_display = true;
     userX = 4;
     userY = 1;
     prevUserX = -1;
@@ -320,12 +324,19 @@ int DisplayTick(int state)
     switch (state)
     {
     case D1:
-        outNum(digits[0]);
-        PORTB = SetBit(PORTB, 0, 0);
+        if (num_display)
+        {
+            outNum(digits[0]);
+            PORTB = SetBit(PORTB, 0, 0);
+        }
+        else
+        {
+            outNum(10);
+        }
         break;
 
     case D2:
-        if (score >= 10)
+        if (score >= 10 && num_display)
         {
             outNum(digits[1]);
             PORTD = SetBit(PORTD, 2, 0);
@@ -337,7 +348,7 @@ int DisplayTick(int state)
         break;
 
     case D3:
-        if (score >= 100)
+        if (score >= 100 && num_display)
         {
             outNum(digits[2]);
             PORTD = SetBit(PORTD, 3, 0);
@@ -349,7 +360,7 @@ int DisplayTick(int state)
         break;
 
     case D4:
-        if (score >= 1000)
+        if (score >= 1000 && num_display)
         {
             outNum(digits[3]);
             PORTD = SetBit(PORTD, 4, 0);
@@ -649,6 +660,80 @@ int MasterJoystickTick(int state)
     return state;
 }
 
+int WinnerJoystickTick(int state)
+{
+    num_display = !num_display;
+    
+    if (winner)
+    {
+        unsigned int btn_pressed = ADC_read(2) < 200;
+
+        // State transitions
+        switch (state)
+        {
+        case JOY_INIT:
+            state = JOY_WAIT;
+            break;
+
+        case JOY_WAIT:
+            if (btn_pressed)
+            {
+                longPressTimer = 0;
+                state = JOY_BTN_PRESS;
+            }
+            break;
+
+        case JOY_BTN_PRESS:
+            if (!btn_pressed)
+            {
+                if (longPressTimer < LONG_PRESS_THRESHOLD)
+                {
+                    state = JOY_BTN_RELEASE;
+                }
+                else
+                {
+                    state = JOY_BTN_LONG_PRESS;
+                }
+                longPressTimer = 0;
+            }
+            break;
+
+        case JOY_BTN_RELEASE:
+        case JOY_BTN_LONG_PRESS:
+            state = JOY_WAIT;
+            break;
+
+        default:
+            state = JOY_INIT;
+            break;
+        }
+
+        // State actions
+        switch (state)
+        {
+        case JOY_BTN_PRESS:
+            longPressTimer++;
+            break;
+
+        case JOY_BTN_RELEASE:
+            if (longPressTimer < LONG_PRESS_THRESHOLD)
+            {
+                playerReset();
+            }
+            break;
+
+        case JOY_BTN_LONG_PRESS:
+            masterReset();
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    return state;
+}
+
 int VisitedTick(int state)
 {
     if ((userX != prevUserX || userY != prevUserY) && userX > 0 && userY > 0)
@@ -921,6 +1006,11 @@ int main(void)
     tasks[7].period = MATRIX_DISP_PERIOD;
     tasks[7].elapsedTime = 0;
     tasks[7].TickFct = &MasterMatrixDispTick;
+
+    tasks[8].state = JOY_INIT;
+    tasks[8].period = JOY_PERIOD;
+    tasks[8].elapsedTime = 0;
+    tasks[8].TickFct = &WinnerJoystickTick;
 
     TimerSet(GCD_PERIOD);
     TimerOn();
