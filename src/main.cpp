@@ -29,7 +29,6 @@ unsigned char correct_moves[MAX_MOVES];
 unsigned char move_count = 0;
 unsigned char firstMoveRecorded = false;
 unsigned char winner = false;
-unsigned int winner_count = 0;
 
 int visited[9][9] = {0};
 unsigned int prevUserX = 0;
@@ -270,8 +269,8 @@ void winnerReset()
     winner = true;
     userX = -1;
     userY = -1;
-    setColor1(0, 0, 0);
-    setColor2(20, 90, 10);
+    setColor1(20, 90, 10);
+    setColor2(0, 0, 0);
 }
 
 void loserReset()
@@ -279,8 +278,8 @@ void loserReset()
     winner = true;
     userX = -1;
     userY = -1;
-    setColor1(0, 0, 0);
-    setColor2(100, 0, 0);
+    setColor1(100, 0, 0);
+    setColor2(0, 0, 0);
 }
 
 // TODO: Create your tick functions for each task
@@ -674,11 +673,6 @@ int WinnerTick(int state)
 {
     if (winner)
     {
-        if (winner_count == 0)
-        {
-            num_display = !num_display;
-        }
-
         unsigned int btn_pressed = ADC_read(2) < 200;
 
         // State transitions
@@ -742,8 +736,6 @@ int WinnerTick(int state)
         default:
             break;
         }
-
-        winner_count = (winner_count + 1) % 4;
     }
 
     return state;
@@ -881,17 +873,20 @@ int RgbLedFlicker(int state)
         switch (state)
         {
         case RGB_COLOR_ONE:
+            num_display = true;
             red_percent = color1[0];
             green_percent = color1[1];
             blue_percent = color1[2];
             break;
 
         case RGB_COLOR_TWO:
+            num_display = false;
             red_percent = color2[0];
             green_percent = color2[1];
             blue_percent = color2[2];
             break;
         default:
+            num_display = true;
             break;
         }
     }
