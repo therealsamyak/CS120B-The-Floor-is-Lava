@@ -29,6 +29,7 @@ unsigned char correct_moves[MAX_MOVES];
 unsigned char move_count = 0;
 unsigned char firstMoveRecorded = false;
 unsigned char winner = false;
+unsigned int winner_count = 0;
 
 int visited[9][9] = {0};
 unsigned int prevUserX = 0;
@@ -50,6 +51,8 @@ unsigned int blue_percent = 0;
 
 unsigned int color1[3] = {0};
 unsigned int color2[3] = {0};
+unsigned int default_color1[3] = {100, 0, 50};
+unsigned int default_color2[3] = {0, 40, 100};
 
 // Task struct for concurrent synchSMs implmentations
 typedef struct _task
@@ -68,7 +71,7 @@ const unsigned long DISP_PERIOD = 5;
 const unsigned long JOY_PERIOD = 150;
 const unsigned long VISITED_PERIOD = 100;
 const unsigned long MATRIX_DISP_PERIOD = 650;
-const unsigned long RGB_LED_FLICKER_PERIOD = 650;
+const unsigned long RGB_LED_FLICKER_PERIOD = 600;
 const unsigned long RGB_LED_PERIOD = 1;
 
 task tasks[NUM_TASKS]; // declared task array with 5 tasks
@@ -86,6 +89,20 @@ void TimerISR()
         }
         tasks[i].elapsedTime += GCD_PERIOD; // Increment the elapsed time by GCD_PERIOD
     }
+}
+
+void setColor1(uint8_t red, uint8_t green, uint8_t blue)
+{
+    color1[0] = red;
+    color1[1] = green;
+    color1[2] = blue;
+}
+
+void setColor2(uint8_t red, uint8_t green, uint8_t blue)
+{
+    color2[0] = red;
+    color2[1] = green;
+    color2[2] = blue;
 }
 
 void outNum(unsigned char digit)
@@ -115,7 +132,6 @@ void outNum(unsigned char digit)
 
         // Clock (shift)
         PORTD = SetBit(PORTD, 6, 1);
-
         PORTD = SetBit(PORTD, 6, 0);
     }
 
@@ -176,6 +192,7 @@ void clearMasterMoves()
 
 void playerReset()
 {
+    winner = false;
     score = 10;
     num_display = true;
     move_count = 1;
@@ -188,10 +205,13 @@ void playerReset()
     clearVisited();
     clearMatrix();
     visited[startX][startY] = 1;
+    setColor1(default_color1[0], default_color1[1], default_color1[2]);
+    setColor2(default_color2[0], default_color2[1], default_color2[2]);
 }
 
 void playerResetNoScore()
 {
+    winner = false;
     move_count = 1;
     num_display = true;
     startY = correct_moves[0] % 10;
@@ -203,6 +223,8 @@ void playerResetNoScore()
     clearVisited();
     clearMatrix();
     visited[startX][startY] = 1;
+    setColor1(default_color1[0], default_color1[1], default_color1[2]);
+    setColor2(default_color2[0], default_color2[1], default_color2[2]);
 }
 
 void masterReset()
@@ -220,6 +242,8 @@ void masterReset()
     clearVisited();
     clearMatrix();
     clearMasterMoves();
+    setColor1(default_color1[0], default_color1[1], default_color1[2]);
+    setColor2(default_color2[0], default_color2[1], default_color2[2]);
 }
 
 // led helper functions
@@ -241,27 +265,13 @@ void setRGBCycles(unsigned int red_percent, unsigned int green_percent, unsigned
     blue_duty_cycle = (blue_percent * pwm_period) / 100;
 }
 
-void setColor1(uint8_t red, uint8_t green, uint8_t blue)
-{
-    color1[0] = red;
-    color1[1] = green;
-    color1[2] = blue;
-}
-
-void setColor2(uint8_t red, uint8_t green, uint8_t blue)
-{
-    color2[0] = red;
-    color2[1] = green;
-    color2[2] = blue;
-}
-
 void winnerReset()
 {
     winner = true;
     userX = -1;
     userY = -1;
-    setColor1(20, 90, 10);
-    setColor2(0, 0, 100);
+    setColor1(0, 0, 0);
+    setColor2(20, 90, 10);
 }
 
 void loserReset()
@@ -269,8 +279,8 @@ void loserReset()
     winner = true;
     userX = -1;
     userY = -1;
-    setColor1(100, 0, 0);
-    setColor2(0, 0, 0);
+    setColor1(0, 0, 0);
+    setColor2(100, 0, 0);
 }
 
 // TODO: Create your tick functions for each task
@@ -660,12 +670,15 @@ int MasterJoystickTick(int state)
     return state;
 }
 
-int WinnerJoystickTick(int state)
+int WinnerTick(int state)
 {
-    num_display = !num_display;
-    
     if (winner)
     {
+        if (winner_count == 0)
+        {
+            num_display = !num_display;
+        }
+
         unsigned int btn_pressed = ADC_read(2) < 200;
 
         // State transitions
@@ -729,6 +742,8 @@ int WinnerJoystickTick(int state)
         default:
             break;
         }
+
+        winner_count = (winner_count + 1) % 4;
     }
 
     return state;
@@ -1010,16 +1025,12 @@ int main(void)
     tasks[8].state = JOY_INIT;
     tasks[8].period = JOY_PERIOD;
     tasks[8].elapsedTime = 0;
-    tasks[8].TickFct = &WinnerJoystickTick;
+    tasks[8].TickFct = &WinnerTick;
 
     TimerSet(GCD_PERIOD);
     TimerOn();
 
-    setColor2(0, 40, 100);
-
-    setColor1(50, 0, 90);
-    // setColor2(0, 40, 100);
-    // setColor2(0, 0, 0);
+    masterReset();
 
     while (1)
     {
